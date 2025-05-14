@@ -1,9 +1,7 @@
 %{
-
 #include "nodes.hpp"
 #include "output.hpp"
 
-// bison declarations
 extern int yylineno;
 extern int yylex();
 
@@ -15,26 +13,19 @@ std::shared_ptr<ast::Node> program;
 using namespace std;
 %}
 
-%define api.value.type {std::shared_ptr<ast::Node>}
-
+/* Semantic-value union */
 %union {
-  char*    sval;
-  bool     bval;
-  std::shared_ptr<ast::Node> node;
+  char*                          sval;   /* for BINOP, RELOP */
+  std::shared_ptr<ast::Node>    node;   /* for all AST nodes */
 }
 
-%token <sval> ID STRING
-%token <sval> BINOP
-%token <sval> RELOP
-%token <node> NUM
-%token <node> NUM_B
-
-%token VOID INT BYTE BOOL
-%token AND OR NOT TRUE FALSE RETURN
-%token IF ELSE WHILE BREAK CONTINUE
-
+/* Token declarations */
+%token <sval> BINOP RELOP
+%token <node> ID NUM NUM_B STRING
+%token VOID INT BYTE BOOL AND OR NOT TRUE FALSE RETURN IF ELSE WHILE BREAK CONTINUE
 %token SC COMMA LPAREN RPAREN LBRACE RBRACE LBRACK RBRACK ASSIGN
 
+/* Precedence & associativity (dangling-else, logical/arithmetic ops) */
 %nonassoc LOWER_THAN_ELSE
 %nonassoc ELSE
 %right    NOT
@@ -42,6 +33,11 @@ using namespace std;
 %left     AND
 %nonassoc RELOP
 %left     BINOP
+
+/* Nonterminals carry AST-node pointers */
+%type <node> Program Funcs FuncDecl RetType Type
+%type <node> Formals FormalsList FormalDecl
+%type <node> Statements Statement Call ExpList Exp
 
 %%
 
@@ -91,15 +87,15 @@ Formals:
   | FormalsList     { $$ = $1; }
   ;
 
-
+/* 9–10. FormalsList → FormalDecl | FormalDecl COMMA FormalsList */
 FormalsList:
-    /* 9–10 */ FormalDecl                         {
+    FormalDecl                         {
         $$ = std::make_shared<ast::Formals>(
             std::dynamic_pointer_cast<ast::Formal>($1)
         );
     }
-  | FormalDecl COMMA FormalsList                {
-        auto tail = $3;
+  | FormalDecl COMMA FormalsList      {
+        auto tail = std::dynamic_pointer_cast<ast::Formals>($3);
         tail->push_front(std::dynamic_pointer_cast<ast::Formal>($1));
         $$ = tail;
     }
@@ -123,7 +119,7 @@ Statements:
         );
     }
   | Statements Statement                   {
-        auto seq = $1;
+        auto seq = std::dynamic_pointer_cast<ast::Statements>($1);
         seq->push_back(std::dynamic_pointer_cast<ast::Statement>($2));
         $$ = seq;
     }
@@ -164,11 +160,11 @@ Statement:
         );
     }
   | Type ID LBRACK Exp RBRACK SC            {
-        /* array declaration */
         auto prim = std::dynamic_pointer_cast<ast::PrimitiveType>($1);
         $$ = std::make_shared<ast::VarDecl>(
             std::dynamic_pointer_cast<ast::ID>($2),
-            std::make_shared<ast::ArrayType>(prim->type, std::dynamic_pointer_cast<ast::Exp>($4)),
+            std::make_shared<ast::ArrayType>(prim->type,
+                                            std::dynamic_pointer_cast<ast::Exp>($4)),
             nullptr
         );
     }
@@ -217,10 +213,12 @@ Call:
 /* 30–31. ExpList → Exp | Exp COMMA ExpList */
 ExpList:
     Exp                                     {
-        $$ = std::make_shared<ast::ExpList>(std::dynamic_pointer_cast<ast::Exp>($1));
+        $$ = std::make_shared<ast::ExpList>(
+            std::dynamic_pointer_cast<ast::Exp>($1)
+        );
     }
   | Exp COMMA ExpList                       {
-        auto tail = $3;
+        auto tail = std::dynamic_pointer_cast<ast::ExpList>($3);
         tail->push_front(std::dynamic_pointer_cast<ast::Exp>($1));
         $$ = tail;
     }
@@ -240,7 +238,7 @@ Exp:
         if      (strcmp($2, "+")==0) op = ast::BinOpType::ADD;
         else if (strcmp($2, "-")==0) op = ast::BinOpType::SUB;
         else if (strcmp($2, "*")==0) op = ast::BinOpType::MUL;
-        else                         op = ast::BinOpType::DIV;
+        else                          op = ast::BinOpType::DIV;
         $$ = std::make_shared<ast::BinOp>($1, $3, op);
     }
   | Exp RELOP Exp                           {
@@ -250,7 +248,7 @@ Exp:
         else if (strcmp($2, "<=")==0) ro = ast::RelOpType::LE;
         else if (strcmp($2, ">=")==0) ro = ast::RelOpType::GE;
         else if (strcmp($2, "<")==0)  ro = ast::RelOpType::LT;
-        else                          ro = ast::RelOpType::GT;
+        else                           ro = ast::RelOpType::GT;
         $$ = std::make_shared<ast::RelOp>($1, $3, ro);
     }
   | Exp AND Exp                            { $$ = std::make_shared<ast::And>($1,$3); }
@@ -273,6 +271,7 @@ Exp:
 
 %%
 
+/* Syntax‐error handler */
 void yyerror(const char *s) {
     errorSyn(yylineno);
 }
