@@ -1,8 +1,8 @@
 #!/bin/bash 
 # change these per each homework 
 #	link to tests:
-testsurl="https://github.com/Hila-Levi/HW2_tests"
-makefileurl="https://github.com/Hila-Levi/hw2_makefile"
+testsurl="https://github.com/Tomer1577/HW2_tests.git"
+makefileurl="https://github.com/Tomer1577/hw2_makefile.git"
 
 hostname="cscomp"
 tmpdir="selfcheck_tmp"
@@ -49,9 +49,9 @@ if [ ! -f scanner.lex ]
 	exit
 fi
 
-if [ ! -f parser.ypp ] 
+if [ ! -f parser.y ] 
 	then
-	echo "File parser.ypp not found!"
+	echo "File parser.y not found!"
 	exit
 fi
 
@@ -77,7 +77,7 @@ cd hw2_makefile
 mv * ../
 cd ..
 
-make -f Makefile-hw2
+make -f Makefile
 
 if [ ! -f hw2 ] 
 	then 
