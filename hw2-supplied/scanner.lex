@@ -12,7 +12,6 @@ whitespace      ([\r\n\t ])
 digit           ([0-9])
 letter          ([a-zA-Z])
 digitletter     ([0-9a-zA-Z])
-string          ([ !#-\[	\]-~])
 
 %%
 void                                                                            return VOID;
@@ -22,8 +21,8 @@ bool                                                                            
 and                                                                             return AND;
 or                                                                              return OR;
 not                                                                             return NOT;
-true                                                                            return TRUE;
-false                                                                           return FALSE;
+true                                                                            { yylval = std::make_shared<ast::Bool>(true); return TRUE; }
+false                                                                           { yylval = std::make_shared<ast::Bool>(false); return FALSE; }
 return                                                                          return RETURN;
 if                                                                              return IF;
 else                                                                            return ELSE;
@@ -42,23 +41,10 @@ continue                                                                        
 <|>                                                                             return RELOP;
 =                                                                               return ASSIGN;
 [-+*/]                                                                          return BINOP;
-
-{letter}{digitletter}*                                                          {
-                                                                                yylval = std::make_shared<ast::ID>(yytext);
-                                                                                return ID;
-                                                                                }
-0|([1-9]+{digit}*)                                                              {
-                                                                                yylval = std::make_shared<ast::Num>(yytext);
-                                                                                return NUM;
-                                                                                }
-(0|([1-9]+{digit}*))b                                                           {
-                                                                                yylval = std::make_shared<ast::NumB>(yytext);
-                                                                                return NUM_B;
-                                                                                }
-\"{string}*\"                                                                   {
-                                                                                yylval = std::make_shared<ast::String>(yytext);
-                                                                                return STRING;
-                                                                                }
+{letter}{digitletter}*                                                          { yylval = std::make_shared<ast::ID>(yytext); return ID; }
+0|([1-9]+{digit}*)                                                              { yylval = std::make_shared<ast::Num>(yytext); return NUM; }
+(0|([1-9]+{digit}*))b                                                           { yylval = std::make_shared<ast::NumB>(yytext); return NUM_B; }
+\"([^\n\r"\\]|\\[rnt"\\])+\"                                                    { yylval = std::make_shared<ast::String>(yytext); return STRING; }
 {whitespace}                                                                    ;
 \/\/[^\r\n]*                                                                    ;
 .                                                                               { errorLex(yylineno); }
