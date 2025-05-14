@@ -1,300 +1,116 @@
+%define api.value.type {std::shared_ptr<ast::Node>}
+%define api.location.type {YYLTYPE}
+%define parse.error custom
+%locations
+%debug
+
 %{
+#include <memory>
+#include <utility>
 #include "nodes.hpp"
 #include "output.hpp"
 
+using namespace std;
+using namespace ast;
+
 extern int yylineno;
 extern int yylex();
-void yyerror(const char*);
 
-// the AST root
 std::shared_ptr<ast::Node> program;
-
-using namespace ast;
 %}
 
-/* Tokens (lexical patterns defined in scanner.lex) */
-%token VOID INT BYTE BOOL AND OR NOT TRUE FALSE RETURN
-%token IF ELSE WHILE BREAK CONTINUE
-%token SC       /* ; */ 
-%token COMMA    /* , */
-%token LPAREN   /* ( */
-%token RPAREN   /* ) */
-%token LBRACE   /* { */
-%token RBRACE   /* } */
-%token LBRACK   /* [ */
-%token RBRACK   /* ] */
-%token ASSIGN   /* = */
-%token RELOP    /* == != < > <= >= */
-%token BINOP    /* + - * / */
-%token ID       /* [a-zA-Z][a-zA-Z0-9]* */
-%token NUM      /* 0 | [1-9][0-9]* */
-%token NUM_B    /* 0b | [1-9][0-9]*b */
-%token STRING   /* "…"(no newlines or unescaped quotes) */
+%token VOID INT BYTE BOOL IF ELSE WHILE RETURN BREAK CONTINUE
+%token TRUE FALSE NOT AND OR
+%token LPAREN RPAREN LBRACE RBRACE LBRACK RBRACK
+%token SC COMMA ASSIGN
+%token <std::shared_ptr<ast::Node>> ID NUM NUM_B STRING BINOP RELOP
 
-/* Precedence & associativity to disambiguate expressions
-   and to solve dangling-else (lower-than-else trick). */
+%type <std::shared_ptr<ast::Node>> Program Funcs FuncDecl RetType Type Formals FormalsList FormalDecl Statements Statement Exp ExpList Call
+
 %nonassoc LOWER_THAN_ELSE
 %nonassoc ELSE
 %left OR
 %left AND
-%nonassoc RELOP
+%left RELOP
 %left BINOP
 %right NOT
 
 %%
+Program : Funcs               { program = $1; $$ = $1; }
+        ;
 
-Program
-  : Funcs              { program = $1; }
-  ;
+Funcs   :                     { $$ = make_shared<Funcs>(); }
+        | FuncDecl Funcs      { auto f = dynamic_pointer_cast<FuncDecl>($1); auto fs = dynamic_pointer_cast<Funcs>($2); fs->push_front(f); $$ = fs; }
+        ;
 
-/*=== top-level function list ===*/
-Funcs
-  : /* empty */        { $$ = std::make_shared<ast::Funcs>(); }
-  | FuncDecl Funcs     {
-        auto fd = std::dynamic_pointer_cast<ast::FuncDecl>($1);
-        auto fs = std::dynamic_pointer_cast<ast::Funcs>   ($2);
-        fs->push_front(fd);
-        $$ = fs;
-    }
-  ;
+FuncDecl: RetType ID LPAREN Formals RPAREN LBRACE Statements RBRACE
+          { $$ = make_shared<FuncDecl>(dynamic_pointer_cast<ID>($2), dynamic_pointer_cast<Type>($1), dynamic_pointer_cast<Formals>($4), dynamic_pointer_cast<Statements>($7)); }
+        ;
 
-/*=== one function declaration ===*/
-FuncDecl
-  : RetType ID LPAREN Formals RPAREN LBRACE Statements RBRACE
-    {
-      auto rt   = std::dynamic_pointer_cast<Type>($1);
-      auto id   = std::dynamic_pointer_cast<ID>  ($2);
-      auto fmls = std::dynamic_pointer_cast<Formals>   ($4);
-      auto stmts= std::dynamic_pointer_cast<Statements>($7);
-      $$ = std::make_shared<FuncDecl>(id, rt, fmls, stmts);
-    }
-  ;
+RetType : Type                { $$ = $1; }
+        | VOID                { $$ = make_shared<PrimitiveType>(BuiltInType::VOID); }
+        ;
 
-/*=== return type ===*/
-RetType
-  : Type              { $$ = $1; }
-  | VOID              { $$ = std::make_shared<PrimitiveType>(BuiltInType::VOID); }
-  ;
+Formals :                     { $$ = make_shared<Formals>(); }
+        | FormalsList         { $$ = $1; }
+        ;
 
-/*=== formal parameters ===*/
-Formals
-  : /* empty */       { $$ = std::make_shared<Formals>(); }
-  | FormalsList       { $$ = $1; }
-  ;
+FormalsList : FormalDecl                          { $$ = make_shared<Formals>(dynamic_pointer_cast<FormalDecl>($1)); }
+            | FormalDecl COMMA FormalsList        { auto fs = dynamic_pointer_cast<Formals>($3); fs->push_front(dynamic_pointer_cast<FormalDecl>($1)); $$ = fs; }
+            ;
 
-FormalsList
-  : FormalDecl
-    { $$ = std::make_shared<Formals>($1); }
-  | FormalDecl COMMA FormalsList
-    {
-      auto fl = $3;
-      fl->push_front($1);
-      $$ = fl;
-    }
-  ;
+FormalDecl : Type ID   { $$ = make_shared<Formal>(dynamic_pointer_cast<ID>($2), dynamic_pointer_cast<Type>($1)); }
+           ;
 
-FormalDecl
-  : Type ID
-    {
-      auto t  = std::dynamic_pointer_cast<Type>($1);
-      auto id = std::dynamic_pointer_cast<ID>  ($2);
-      $$ = std::make_shared<Formal>(id, t);
-    }
-  ;
+Statements : Statement                     { $$ = make_shared<Statements>(dynamic_pointer_cast<Statement>($1)); }
+           | Statements Statement          { auto st = dynamic_pointer_cast<Statements>($1); st->push_back(dynamic_pointer_cast<Statement>($2)); $$ = st; }
+           ;
 
-/*=== statement sequences ===*/
-Statements
-  : Statement
-    { $$ = std::make_shared<Statements>($1); }
-  | Statements Statement
-    {
-      auto ss = $1;
-      ss->push_back($2);
-      $$ = ss;
-    }
-  ;
+Statement : LBRACE Statements RBRACE       { $$ = $2; }
+          | Type ID SC                     { $$ = make_shared<VarDecl>(dynamic_pointer_cast<ID>($2), dynamic_pointer_cast<Type>($1), nullptr); }
+          | Type ID ASSIGN Exp SC          { $$ = make_shared<VarDecl>(dynamic_pointer_cast<ID>($2), dynamic_pointer_cast<Type>($1), dynamic_pointer_cast<Exp>($4)); }
+          | ID ASSIGN Exp SC               { $$ = make_shared<Assign>(dynamic_pointer_cast<ID>($1), dynamic_pointer_cast<Exp>($3)); }
+          | ID LBRACK Exp RBRACK ASSIGN Exp SC { $$ = make_shared<ArrayAssign>(dynamic_pointer_cast<ID>($1), dynamic_pointer_cast<Exp>($6), dynamic_pointer_cast<Exp>($3)); }
+          | Type ID LBRACK Exp RBRACK SC   { $$ = make_shared<VarDecl>(dynamic_pointer_cast<ID>($2), make_shared<ArrayType>(dynamic_pointer_cast<PrimitiveType>($1)->type, dynamic_pointer_cast<Exp>($4)), nullptr); }
+          | Call SC                        { $$ = $1; }
+          | RETURN SC                      { $$ = make_shared<Return>(nullptr); }
+          | RETURN Exp SC                  { $$ = make_shared<Return>(dynamic_pointer_cast<Exp>($2)); }
+          | IF LPAREN Exp RPAREN Statement %prec LOWER_THAN_ELSE { $$ = make_shared<If>(dynamic_pointer_cast<Exp>($3), dynamic_pointer_cast<Statement>($5), nullptr); }
+          | IF LPAREN Exp RPAREN Statement ELSE Statement        { $$ = make_shared<If>(dynamic_pointer_cast<Exp>($3), dynamic_pointer_cast<Statement>($5), dynamic_pointer_cast<Statement>($7)); }
+          | WHILE LPAREN Exp RPAREN Statement   { $$ = make_shared<While>(dynamic_pointer_cast<Exp>($3), dynamic_pointer_cast<Statement>($5)); }
+          | BREAK SC                     { $$ = make_shared<Break>(); }
+          | CONTINUE SC                  { $$ = make_shared<Continue>(); }
+          ;
 
-/*=== individual statements ===*/
-Statement
-  : LBRACE Statements RBRACE
-    { $$ = $2; }
+Call      : ID LPAREN RPAREN                 { $$ = make_shared<Call>(dynamic_pointer_cast<ID>($1)); }
+          | ID LPAREN ExpList RPAREN         { $$ = make_shared<Call>(dynamic_pointer_cast<ID>($1), dynamic_pointer_cast<ExpList>($3)); }
+          ;
 
-  | Type ID SC
-    {
-      auto t  = std::dynamic_pointer_cast<Type>($1);
-      auto id = std::dynamic_pointer_cast<ID>  ($2);
-      $$ = std::make_shared<VarDecl>(id, t, nullptr);
-    }
-  | Type ID ASSIGN Exp SC
-    {
-      auto t  = std::dynamic_pointer_cast<Type>($1);
-      auto id = std::dynamic_pointer_cast<ID>  ($2);
-      auto e  = std::dynamic_pointer_cast<Exp> ($4);
-      $$ = std::make_shared<VarDecl>(id, t, e);
-    }
-  | ID ASSIGN Exp SC
-    {
-      auto id = std::dynamic_pointer_cast<ID> ($1);
-      auto e  = std::dynamic_pointer_cast<Exp>($3);
-      $$ = std::make_shared<Assign>(id, e);
-    }
-  | ID LBRACK Exp RBRACK ASSIGN Exp SC
-    {
-      auto id  = std::dynamic_pointer_cast<ID> ($1);
-      auto idx = std::dynamic_pointer_cast<Exp>($3);
-      auto e   = std::dynamic_pointer_cast<Exp>($6);
-      $$ = std::make_shared<ArrayAssign>(id, e, idx);
-    }
-  | Type ID LBRACK Exp RBRACK SC
-    {
-      // array declaration: Type id[Exp];
-      auto base = std::dynamic_pointer_cast<PrimitiveType>($1);
-      auto id   = std::dynamic_pointer_cast<ID>           ($2);
-      auto len  = std::dynamic_pointer_cast<Exp>          ($4);
-      auto arrT = std::make_shared<ArrayType>(base->type, len);
-      $$ = std::make_shared<VarDecl>(id, arrT, nullptr);
-    }
-  | Call SC           { $$ = std::dynamic_pointer_cast<Statement>($1); }
-  | RETURN SC         { $$ = std::make_shared<Return>(nullptr); }
-  | RETURN Exp SC     {
-      auto e = std::dynamic_pointer_cast<Exp>($2);
-      $$ = std::make_shared<Return>(e);
-    }
+ExpList   : Exp                              { $$ = make_shared<ExpList>(dynamic_pointer_cast<Exp>($1)); }
+          | Exp COMMA ExpList                { auto lst = dynamic_pointer_cast<ExpList>($3); lst->push_front(dynamic_pointer_cast<Exp>($1)); $$ = lst; }
+          ;
 
-  /* dangling-else resolved by %prec LOWER_THAN_ELSE */
-  | IF LPAREN Exp RPAREN Statement %prec LOWER_THAN_ELSE
-    {
-      auto c = std::dynamic_pointer_cast<Exp>      ($3);
-      auto s = std::dynamic_pointer_cast<Statement>($5);
-      $$ = std::make_shared<If>(c, s, nullptr);
-    }
-  | IF LPAREN Exp RPAREN Statement ELSE Statement
-    {
-      auto c = std::dynamic_pointer_cast<Exp>      ($3);
-      auto t = std::dynamic_pointer_cast<Statement>($5);
-      auto o = std::dynamic_pointer_cast<Statement>($7);
-      $$ = std::make_shared<If>(c, t, o);
-    }
-  | WHILE LPAREN Exp RPAREN Statement
-    {
-      auto c = std::dynamic_pointer_cast<Exp>      ($3);
-      auto b = std::dynamic_pointer_cast<Statement>($6);
-      $$ = std::make_shared<While>(c, b);
-    }
-  | BREAK SC        { $$ = std::make_shared<Break>(); }
-  | CONTINUE SC     { $$ = std::make_shared<Continue>(); }
-  ;
+Type      : INT   { $$ = make_shared<PrimitiveType>(BuiltInType::INT); }
+          | BYTE  { $$ = make_shared<PrimitiveType>(BuiltInType::BYTE); }
+          | BOOL  { $$ = make_shared<PrimitiveType>(BuiltInType::BOOL); }
+          ;
 
-/*=== function calls as expressions/statements ===*/
-Call
-  : ID LPAREN ExpList RPAREN
-    {
-      auto id  = std::dynamic_pointer_cast<ID>($1);
-      auto el  = std::dynamic_pointer_cast<ExpList>($3);
-      $$ = std::make_shared<Call>(id, el);
-    }
-  | ID LPAREN RPAREN
-    {
-      auto id = std::dynamic_pointer_cast<ID>($1);
-      $$ = std::make_shared<Call>(id);
-    }
-  ;
-
-/*=== comma-separated argument lists ===*/
-ExpList
-  : Exp
-    { $$ = std::make_shared<ExpList>(std::dynamic_pointer_cast<Exp>($1)); }
-  | Exp COMMA ExpList
-    {
-      auto e  = std::dynamic_pointer_cast<Exp>($1);
-      auto el = $3;
-      el->push_front(e);
-      $$ = el;
-    }
-  ;
-
-/*=== built-in types ===*/
-Type
-  : INT  { $$ = std::make_shared<PrimitiveType>(BuiltInType::INT);  }
-  | BYTE { $$ = std::make_shared<PrimitiveType>(BuiltInType::BYTE); }
-  | BOOL { $$ = std::make_shared<PrimitiveType>(BuiltInType::BOOL); }
-  ;
-
-/*=== expressions ===*/
-Exp
-  : LPAREN Exp RPAREN
-    { $$ = $2; }
-
-  | LPAREN Type RPAREN Exp
-    {
-      // cast:  (Type) Exp
-      // we know $2 is PrimitiveType
-      auto pt = std::dynamic_pointer_cast<PrimitiveType>($2);
-      auto ex= std::dynamic_pointer_cast<Exp>($4);
-      $$ = std::make_shared<Cast>(ex, pt);
-    }
-
-  | NOT Exp
-    {
-      auto e = std::dynamic_pointer_cast<Exp>($2);
-      $$ = std::make_shared<Not>(e);
-    }
-
-  | Exp AND Exp
-    {
-      auto l = std::dynamic_pointer_cast<Exp>($1);
-      auto r = std::dynamic_pointer_cast<Exp>($3);
-      $$ = std::make_shared<And>(l, r);
-    }
-
-  | Exp OR Exp
-    {
-      auto l = std::dynamic_pointer_cast<Exp>($1);
-      auto r = std::dynamic_pointer_cast<Exp>($3);
-      $$ = std::make_shared<Or>(l, r);
-    }
-
-  | Exp RELOP Exp
-    {
-      // relational operator
-      char const* op = yytext;
-      RelOpType ro;
-      if      (!strcmp(op, "==" )) ro = RelOpType::EQ;
-      else if (!strcmp(op, "!=" )) ro = RelOpType::NE;
-      else if (!strcmp(op, "<"  )) ro = RelOpType::LT;
-      else if (!strcmp(op, "<=" )) ro = RelOpType::LE;
-      else if (!strcmp(op, ">"  )) ro = RelOpType::GT;
-      else /*>=*/                  ro = RelOpType::GE;
-      auto l = std::dynamic_pointer_cast<Exp>($1);
-      auto r = std::dynamic_pointer_cast<Exp>($3);
-      $$ = std::make_shared<RelOp>(l, r, ro);
-    }
-
-  | Exp BINOP Exp
-    {
-      // binary arithmetic
-      char c = yytext[0];
-      BinOpType bo = (c=='+'?BinOpType::ADD:
-                      c=='-'?BinOpType::SUB:
-                      c=='*'?BinOpType::MUL:
-                             BinOpType::DIV);
-      auto l = std::dynamic_pointer_cast<Exp>($1);
-      auto r = std::dynamic_pointer_cast<Exp>($3);
-      $$ = std::make_shared<BinOp>(l, r, bo);
-    }
-
-  | ID         { $$ = $1; }
-  | NUM        { $$ = $1; }
-  | NUM_B      { $$ = $1; }
-  | STRING     { $$ = $1; }
-  | TRUE       { $$ = std::make_shared<Bool>(true); }
-  | FALSE      { $$ = std::make_shared<Bool>(false); }
-  | Call       { $$ = std::dynamic_pointer_cast<Exp>($1); }
-  ;
-
+Exp       : LPAREN Exp RPAREN                { $$ = $2; }
+          | ID LBRACK Exp RBRACK             { $$ = make_shared<ArrayDereference>(dynamic_pointer_cast<ID>($1), dynamic_pointer_cast<Exp>($3)); }
+          | Exp BINOP Exp                    { auto opStr = dynamic_pointer_cast<ID>($2)->value; BinOpType op = (opStr == "+") ? BinOpType::ADD : (opStr == "-") ? BinOpType::SUB : (opStr == "*") ? BinOpType::MUL : BinOpType::DIV; $$ = make_shared<BinOp>(dynamic_pointer_cast<Exp>($1), dynamic_pointer_cast<Exp>($3), op); }
+          | Exp AND Exp                      { $$ = make_shared<And>(dynamic_pointer_cast<Exp>($1), dynamic_pointer_cast<Exp>($3)); }
+          | Exp OR Exp                       { $$ = make_shared<Or>(dynamic_pointer_cast<Exp>($1), dynamic_pointer_cast<Exp>($3)); }
+          | Exp RELOP Exp                    { auto opStr = dynamic_pointer_cast<ID>($2)->value; RelOpType op = (opStr == "==") ? RelOpType::EQ : (opStr == "!=") ? RelOpType::NE : (opStr == "<") ? RelOpType::LT : (opStr == "<=") ? RelOpType::LE : (opStr == ">") ? RelOpType::GT : RelOpType::GE; $$ = make_shared<RelOp>(dynamic_pointer_cast<Exp>($1), dynamic_pointer_cast<Exp>($3), op); }
+          | ID                                { $$ = $1; }
+          | Call                              { $$ = $1; }
+          | NUM                               { $$ = $1; }
+          | NUM_B                             { $$ = $1; }
+          | STRING                            { $$ = $1; }
+          | TRUE                              { $$ = $1; }
+          | FALSE                             { $$ = $1; }
+          | NOT Exp                           { $$ = make_shared<Not>(dynamic_pointer_cast<Exp>($2)); }
+          | LPAREN Type RPAREN Exp            { $$ = make_shared<Cast>(dynamic_pointer_cast<Exp>($4), dynamic_pointer_cast<PrimitiveType>($2)); }
+          ;
 %%
 
-/* on any syntax error, report and exit immediately */
-void yyerror(const char* s) {
-    errorSyn(yylineno);
-}
+int yyerror(const char *) { output::errorSyn(yylineno); return 0; }
