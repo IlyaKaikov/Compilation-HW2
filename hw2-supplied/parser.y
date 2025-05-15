@@ -1,25 +1,29 @@
 %{
+    #include <stdio.h>
+    #include "nodes.hpp"
+    #include "output.hpp"
+    #include "visitor.hpp"
 
-#include "nodes.hpp"
-#include "output.hpp"
+    extern int yylineno;
+    extern int yylex();
+    void yyerror(const char*);
 
-// bison declarations
-extern int yylineno;
-extern int yylex();
+    std::shared_ptr<ast::Node> program;
 
-void yyerror(const char*);
-
-// root of the AST, set by the parser and used by other parts of the compiler
-std::shared_ptr<ast::Node> program;
-
-using namespace std;
-
-// TODO: Place any additional declarations here
+    using namespace std;
 %}
 
-// TODO: Define tokens here
+%token VOID INT BYTE BOOL TRUE FALSE IF RETURN WHILE BREAK CONTINUE SC COMMA ID NUM NUM_B STRING
 
-// TODO: Define precedence and associativity here
+%right ASSIGN
+%left OR
+%left AND
+%left RELOP
+%left ADD_SUB
+%left MULT_DIV
+%right NOT
+%left LPAREN RPAREN LBRACE RBRACE LBRACK RBRACK
+%right ELSE
 
 %%
 

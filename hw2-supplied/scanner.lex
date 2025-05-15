@@ -2,12 +2,12 @@
 %option yylineno
 
 %{
-#include "nodes.hpp"
-#include "output.hpp"
-#include "visitor.hpp"
-#include "parser.tab.hpp"
-using namespace std;
-using namespace ast;
+    #include "nodes.hpp"
+    #include "output.hpp"
+    #include "visitor.hpp"
+    #include "parser.tab.hpp"
+    using namespace std;
+    using namespace ast;
 %}
 
 whitespace      ([\r\n\t ])
@@ -42,7 +42,8 @@ continue                            return CONTINUE;
 \]                                  return RBRACK;
 =                                   return ASSIGN;
 [=!<>]=|<|>                         return RELOP;
-[-+*/]                              return BINOP;
+\+|\-                               return ADD_SUB;
+\*|\\                               return MULT_DIV;
 {letter}{digitletter}*              { yylval = make_shared<ast::ID>(yytext);  return ID; }
 0|([1-9]+{digit}*)                  { yylval = make_shared<ast::Num>(yytext);  return NUM; }
 (0|([1-9]+{digit}*))b               { yylval = make_shared<ast::NumB>(yytext); return NUM_B; }
