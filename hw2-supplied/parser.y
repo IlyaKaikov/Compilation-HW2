@@ -13,6 +13,8 @@ std::shared_ptr<ast::Node> program;
 
 using namespace ast;
 
+extern char last_op[];
+
 static BinOpType binop_from_lexeme(const char* l){
     switch(l[0]){
         case '+': return BinOpType::ADD;
@@ -47,8 +49,8 @@ static RelOpType relop_from_lexeme(const char* l){
 %right NOT
 %right CAST
 %left LBRACK
-%nonassoc ELSE
 %nonassoc LOWER_THAN_ELSE
+%nonassoc ELSE
 
 %%
 Program
@@ -218,7 +220,7 @@ Exp
             $$ = std::make_shared<BinOp>(
                 std::dynamic_pointer_cast<Exp>($1),
                 std::dynamic_pointer_cast<Exp>($3),
-                binop_from_lexeme(yytext)
+                binop_from_lexeme(last_op)
             );
         }
     | T_ID { $$ = $1; }
@@ -242,7 +244,7 @@ Exp
             $$ = std::make_shared<RelOp>(
                 std::dynamic_pointer_cast<Exp>($1),
                 std::dynamic_pointer_cast<Exp>($3),
-                relop_from_lexeme(yytext)
+                relop_from_lexeme(last_op)
             );
         }
     | LPAREN Type RPAREN Exp %prec CAST

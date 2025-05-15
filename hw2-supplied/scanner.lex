@@ -2,12 +2,15 @@
 %option yylineno
 
 %{
+    #include <string.h>
     #include "nodes.hpp"
     #include "output.hpp"
     #include "visitor.hpp"
     #include "parser.tab.h"
     using namespace std;
     using namespace ast;
+
+    char last_op[3];
 %}
 
 whitespace      ([\r\n\t ])
@@ -41,8 +44,8 @@ continue                            return CONTINUE;
 \[                                  return LBRACK;
 \]                                  return RBRACK;
 =                                   return ASSIGN;
-[=!<>]=|<|>                         return RELOP;
-[-+*/]                              return BINOP;
+[=!<>]=|<|>                         { strncpy(last_op, yytext, yyleng); last_op[yyleng]='\0'; return RELOP; }
+[-+*/]                              { last_op[0]=yytext[0]; last_op[1]='\0'; return BINOP; }
 {letter}{digitletter}*              { yylval = make_shared<ast::ID>(yytext);  return T_ID; }
 0|([1-9]+{digit}*)                  { yylval = make_shared<ast::Num>(yytext);  return NUM; }
 (0|([1-9]+{digit}*))b               { yylval = make_shared<ast::NumB>(yytext); return NUM_B; }
