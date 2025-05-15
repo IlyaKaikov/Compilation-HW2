@@ -42,8 +42,7 @@ continue                            return CONTINUE;
 \]                                  return RBRACK;
 =                                   return ASSIGN;
 [=!<>]=|<|>                         return RELOP;
-\+|\-                               return ADD_SUB;
-\*|\\                               return MULT_DIV;
+[-+*/]                              return BINOP;
 {letter}{digitletter}*              { yylval = make_shared<ast::ID>(yytext);  return ID; }
 0|([1-9]+{digit}*)                  { yylval = make_shared<ast::Num>(yytext);  return NUM; }
 (0|([1-9]+{digit}*))b               { yylval = make_shared<ast::NumB>(yytext); return NUM_B; }
