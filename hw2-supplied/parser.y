@@ -11,31 +11,19 @@ void yyerror(const char*);
 
 std::shared_ptr<ast::Node> program;
 
+template<typename T>
+std::shared_ptr<T> as(const std::shared_ptr<ast::Node>& p) {
+    return std::dynamic_pointer_cast<T>(p);
+}
+
 using namespace ast;
-
-extern char last_op[];
-
-static BinOpType binop_from_lexeme(const char* l){
-    switch(l[0]){
-        case '+': return BinOpType::ADD;
-        case '-': return BinOpType::SUB;
-        case '*': return BinOpType::MUL;
-        default: return BinOpType::DIV;
-    }
-}
-static RelOpType relop_from_lexeme(const char* l){
-    if(l[0]=='='&&l[1]=='=') return RelOpType::EQ;
-    if(l[0]=='!'&&l[1]=='=') return RelOpType::NE;
-    if(l[0]=='<'&&l[1]=='=') return RelOpType::LE;
-    if(l[0]=='>'&&l[1]=='=') return RelOpType::GE;
-    if(l[0]=='<') return RelOpType::LT;
-    return RelOpType::GT;
-}
 %}
 
-%token T_VOID T_INT T_BYTE T_BOOL AND OR NOT TRUE FALSE RETURN IF ELSE WHILE BREAK CONTINUE
+%token T_VOID T_INT T_BYTE T_BOOL TRUE FALSE RETURN IF ELSE WHILE BREAK CONTINUE
 %token SC COMMA LPAREN RPAREN LBRACE RBRACE LBRACK RBRACK ASSIGN
-%token RELOP BINOP
+%token PLUS MINUS STAR SLASH
+%token T_LT T_GT T_LE T_GE T_EQ T_NE
+%token AND OR NOT
 %token T_ID NUM NUM_B T_STRING
 
 %type Program Funcs FuncDecl RetType Formals FormalsList FormalDecl Statements Statement Call Exp ExpList Type
@@ -44,9 +32,12 @@ static RelOpType relop_from_lexeme(const char* l){
 
 %left OR
 %left AND
-%nonassoc RELOP
-%left BINOP
+%nonassoc T_EQ T_NE
+%nonassoc T_LT T_GT T_LE T_GE
+%left  PLUS MINUS
+%left  STAR SLASH
 %right NOT
+%right UMINUS
 %right CAST
 %left LBRACK
 %nonassoc LOWER_THAN_ELSE
@@ -212,49 +203,38 @@ Type
     ;
 
 Exp
-    : LPAREN Exp RPAREN { $$ = $2; }
-    | T_ID LBRACK Exp RBRACK
-        { $$ = std::make_shared<ArrayDereference>(std::dynamic_pointer_cast<ID>($1), std::dynamic_pointer_cast<Exp>($3)); }
-    | Exp BINOP Exp
-        {
-            $$ = std::make_shared<BinOp>(
-                std::dynamic_pointer_cast<Exp>($1),
-                std::dynamic_pointer_cast<Exp>($3),
-                binop_from_lexeme(last_op)
-            );
-        }
-    | T_ID { $$ = $1; }
-    | Call { $$ = $1; }
-    | NUM { $$ = $1; }
-    | NUM_B { $$ = $1; }
-    | T_STRING { $$ = $1; }
-    | TRUE { $$ = std::make_shared<Bool>(true); }
-    | FALSE { $$ = std::make_shared<Bool>(false); }
-    | NOT Exp { $$ = std::make_shared<Not>(std::dynamic_pointer_cast<Exp>($2)); }
-    | Exp AND Exp
-        {
-            $$ = std::make_shared<And>(std::dynamic_pointer_cast<Exp>($1), std::dynamic_pointer_cast<Exp>($3));
-        }
-    | Exp OR Exp
-        {
-            $$ = std::make_shared<Or>(std::dynamic_pointer_cast<Exp>($1), std::dynamic_pointer_cast<Exp>($3));
-        }
-    | Exp RELOP Exp
-        {
-            $$ = std::make_shared<RelOp>(
-                std::dynamic_pointer_cast<Exp>($1),
-                std::dynamic_pointer_cast<Exp>($3),
-                relop_from_lexeme(last_op)
-            );
-        }
+    : LPAREN Exp RPAREN              { $$ = $2; }
+    | T_ID LBRACK Exp RBRACK         { $$ = std::make_shared<ArrayDereference>(as<ID>($1), as<Exp>($3)); }
+    | Exp PLUS  Exp                  { $$ = std::make_shared<BinOp>(as<Exp>($1), as<Exp>($3), BinOpType::ADD ); }
+    | Exp MINUS Exp                  { $$ = std::make_shared<BinOp>(as<Exp>($1), as<Exp>($3), BinOpType::SUB ); }
+    | Exp STAR  Exp                  { $$ = std::make_shared<BinOp>(as<Exp>($1), as<Exp>($3), BinOpType::MUL ); }
+    | Exp SLASH Exp                  { $$ = std::make_shared<BinOp>(as<Exp>($1), as<Exp>($3), BinOpType::DIV ); }
+    | Exp AND   Exp                  { $$ = std::make_shared<And>(as<Exp>($1), as<Exp>($3)); }
+    | Exp OR    Exp                  { $$ = std::make_shared<Or> (as<Exp>($1), as<Exp>($3)); }
+    | Exp T_LT Exp                   { $$ = std::make_shared<RelOp>(as<Exp>($1), as<Exp>($3), RelOpType::LT); }
+    | Exp T_GT Exp                   { $$ = std::make_shared<RelOp>(as<Exp>($1), as<Exp>($3), RelOpType::GT); }
+    | Exp T_LE Exp                   { $$ = std::make_shared<RelOp>(as<Exp>($1), as<Exp>($3), RelOpType::LE); }
+    | Exp T_GE Exp                   { $$ = std::make_shared<RelOp>(as<Exp>($1), as<Exp>($3), RelOpType::GE); }
+    | Exp T_EQ Exp                   { $$ = std::make_shared<RelOp>(as<Exp>($1), as<Exp>($3), RelOpType::EQ); }
+    | Exp T_NE Exp                   { $$ = std::make_shared<RelOp>(as<Exp>($1), as<Exp>($3), RelOpType::NE); }
+    | T_ID                           { $$ = $1; }
+    | Call                           { $$ = $1; }
+    | NUM                            { $$ = $1; }
+    | NUM_B                          { $$ = $1; }
+    | T_STRING                       { $$ = $1; }
+    | TRUE                           { $$ = std::make_shared<Bool>(true);  }
+    | FALSE                          { $$ = std::make_shared<Bool>(false); }
+    | NOT  Exp                       { $$ = std::make_shared<Not>(as<Exp>($2)); }
+    | MINUS Exp          %prec UMINUS
+                                     { $$ = std::make_shared<BinOp>(
+                                             std::make_shared<Num>("0"),
+                                             as<Exp>($2),
+                                             BinOpType::SUB); }
     | LPAREN Type RPAREN Exp %prec CAST
-        {
-            $$ = std::make_shared<Cast>(
-                std::dynamic_pointer_cast<Exp>($4),
-                std::dynamic_pointer_cast<PrimitiveType>($2)
-            );
-        }
+                                     { $$ = std::make_shared<Cast>(as<Exp>($4),
+                                             std::dynamic_pointer_cast<PrimitiveType>($2)); }
     ;
+
 %%
 
 void yyerror(const char*) {

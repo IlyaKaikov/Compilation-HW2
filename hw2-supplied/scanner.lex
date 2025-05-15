@@ -9,8 +9,6 @@
     #include "parser.tab.h"
     using namespace std;
     using namespace ast;
-
-    char last_op[3];
 %}
 
 whitespace      ([\r\n\t ])
@@ -43,9 +41,17 @@ continue                            return CONTINUE;
 \}                                  return RBRACE;
 \[                                  return LBRACK;
 \]                                  return RBRACK;
+>=                                  return T_GE;
+[<]=                                return T_LE;
+==                                  return T_EQ;
+!=                                  return T_NE;
 =                                   return ASSIGN;
-[=!<>]=|<|>                         { strncpy(last_op, yytext, yyleng); last_op[yyleng]='\0'; return RELOP; }
-[-+*/]                              { last_op[0]=yytext[0]; last_op[1]='\0'; return BINOP; }
+\+                                  return PLUS;
+\-                                  return MINUS;
+\*                                  return STAR;
+\/                                  return SLASH;
+>                                   return T_GT;
+[<]                                 return T_LT;
 {letter}{digitletter}*              { yylval = make_shared<ast::ID>(yytext);  return T_ID; }
 0|([1-9]+{digit}*)                  { yylval = make_shared<ast::Num>(yytext);  return NUM; }
 (0|([1-9]+{digit}*))b               { yylval = make_shared<ast::NumB>(yytext); return NUM_B; }
