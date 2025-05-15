@@ -35,10 +35,10 @@ static RelOpType relop_from_lexeme(const char* l){
   std::shared_ptr<ast::Node> node;
 }
 
-%token VOID INT BYTE BOOL AND OR NOT TRUE FALSE RETURN IF ELSE WHILE BREAK CONTINUE
+%token T_VOID T_INT T_BYTE T_BOOL AND OR NOT TRUE FALSE RETURN IF ELSE WHILE BREAK CONTINUE
 %token SC COMMA LPAREN RPAREN LBRACE RBRACE LBRACK RBRACK ASSIGN
 %token RELOP BINOP
-%token <node> ID NUM NUM_B STRING
+%token <node> T_ID NUM NUM_B T_STRING
 
 %type <node> Program Funcs FuncDecl RetType Formals FormalsList FormalDecl Statements Statement Call Exp ExpList Type
 
@@ -50,6 +50,9 @@ static RelOpType relop_from_lexeme(const char* l){
 %left BINOP
 %right NOT
 %left LBRACK
+%nonassoc ELSE
+%nonassoc LOWER_THAN_ELSE
+
 %%
 Program
     : Funcs { program = $1; }
@@ -61,7 +64,7 @@ Funcs
     ;
 
 FuncDecl
-    : RetType ID LPAREN Formals RPAREN LBRACE Statements RBRACE
+    : RetType T_ID LPAREN Formals RPAREN LBRACE Statements RBRACE
         {
             $$ = std::make_shared<FuncDecl>(
                 std::dynamic_pointer_cast<ID>($2),
@@ -74,7 +77,7 @@ FuncDecl
 
 RetType
     : Type { $$ = $1; }
-    | VOID { $$ = std::make_shared<PrimitiveType>(BuiltInType::VOID); }
+    | T_VOID { $$ = std::make_shared<PrimitiveType>(BuiltInType::VOID); }
     ;
 
 Formals
@@ -93,7 +96,7 @@ FormalsList
     ;
 
 FormalDecl
-    : Type ID
+    : Type T_ID
         {
             $$ = std::make_shared<Formal>(
                 std::dynamic_pointer_cast<ID>($2),
@@ -114,7 +117,7 @@ Statements
 
 Statement
     : LBRACE Statements RBRACE { $$ = $2; }
-    | Type ID SC
+    | Type T_ID SC
         {
             $$ = std::make_shared<VarDecl>(
                 std::dynamic_pointer_cast<ID>($2),
@@ -122,7 +125,7 @@ Statement
                 nullptr
             );
         }
-    | Type ID ASSIGN Exp SC
+    | Type T_ID ASSIGN Exp SC
         {
             $$ = std::make_shared<VarDecl>(
                 std::dynamic_pointer_cast<ID>($2),
@@ -130,14 +133,14 @@ Statement
                 std::dynamic_pointer_cast<Exp>($4)
             );
         }
-    | ID ASSIGN Exp SC
+    | T_ID ASSIGN Exp SC
         {
             $$ = std::make_shared<Assign>(
                 std::dynamic_pointer_cast<ID>($1),
                 std::dynamic_pointer_cast<Exp>($3)
             );
         }
-    | ID LBRACK Exp RBRACK ASSIGN Exp SC
+    | T_ID LBRACK Exp RBRACK ASSIGN Exp SC
         {
             $$ = std::make_shared<ArrayAssign>(
                 std::dynamic_pointer_cast<ID>($1),
@@ -145,7 +148,7 @@ Statement
                 std::dynamic_pointer_cast<Exp>($3)
             );
         }
-    | Type ID LBRACK Exp RBRACK SC
+    | Type T_ID LBRACK Exp RBRACK SC
         {
             $$ = std::make_shared<VarDecl>(
                 std::dynamic_pointer_cast<ID>($2),
@@ -159,7 +162,7 @@ Statement
     | Call SC { $$ = $1; }
     | RETURN SC { $$ = std::make_shared<Return>(nullptr); }
     | RETURN Exp SC { $$ = std::make_shared<Return>(std::dynamic_pointer_cast<Exp>($2)); }
-    | IF LPAREN Exp RPAREN Statement
+    | IF LPAREN Exp RPAREN Statement %prec LOWER_THAN_ELSE
         {
             $$ = std::make_shared<If>(
                 std::dynamic_pointer_cast<Exp>($3),
@@ -187,9 +190,9 @@ Statement
     ;
 
 Call
-    : ID LPAREN ExpList RPAREN
+    : T_ID LPAREN ExpList RPAREN
         { $$ = std::make_shared<Call>(std::dynamic_pointer_cast<ID>($1), std::dynamic_pointer_cast<ExpList>($3)); }
-    | ID LPAREN RPAREN
+    | T_ID LPAREN RPAREN
         { $$ = std::make_shared<Call>(std::dynamic_pointer_cast<ID>($1)); }
     ;
 
@@ -204,14 +207,14 @@ ExpList
     ;
 
 Type
-    : INT { $$ = std::make_shared<PrimitiveType>(BuiltInType::INT); }
-    | BYTE { $$ = std::make_shared<PrimitiveType>(BuiltInType::BYTE); }
-    | BOOL { $$ = std::make_shared<PrimitiveType>(BuiltInType::BOOL); }
+    : T_INT { $$ = std::make_shared<PrimitiveType>(BuiltInType::INT); }
+    | T_BYTE { $$ = std::make_shared<PrimitiveType>(BuiltInType::BYTE); }
+    | T_BOOL { $$ = std::make_shared<PrimitiveType>(BuiltInType::BOOL); }
     ;
 
 Exp
     : LPAREN Exp RPAREN { $$ = $2; }
-    | ID LBRACK Exp RBRACK
+    | T_ID LBRACK Exp RBRACK
         { $$ = std::make_shared<ArrayDereference>(std::dynamic_pointer_cast<ID>($1), std::dynamic_pointer_cast<Exp>($3)); }
     | Exp BINOP Exp
         {
@@ -221,11 +224,11 @@ Exp
                 binop_from_lexeme(yytext)
             );
         }
-    | ID { $$ = $1; }
+    | T_ID { $$ = $1; }
     | Call { $$ = $1; }
     | NUM { $$ = $1; }
     | NUM_B { $$ = $1; }
-    | STRING { $$ = $1; }
+    | T_STRING { $$ = $1; }
     | TRUE { $$ = std::make_shared<Bool>(true); }
     | FALSE { $$ = std::make_shared<Bool>(false); }
     | NOT Exp { $$ = std::make_shared<Not>(std::dynamic_pointer_cast<Exp>($2)); }
