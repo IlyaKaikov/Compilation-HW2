@@ -24,8 +24,8 @@ bool                                return T_BOOL;
 and                                 return AND;
 or                                  return OR;
 not                                 return NOT;
-true                                { yylval.node = make_shared<ast::Bool>(true);  return TRUE; }
-false                               { yylval.node = make_shared<ast::Bool>(false); return FALSE; }
+true                                { yylval = make_shared<ast::Bool>(true);  return TRUE; }
+false                               { yylval = make_shared<ast::Bool>(false); return FALSE; }
 return                              return RETURN;
 if                                  return IF;
 else                                return ELSE;
@@ -43,10 +43,10 @@ continue                            return CONTINUE;
 =                                   return ASSIGN;
 [=!<>]=|<|>                         return RELOP;
 [-+*/]                              return BINOP;
-{letter}{digitletter}*              { yylval.node = make_shared<ast::ID>(yytext);  return T_ID; }
-0|([1-9]+{digit}*)                  { yylval.node = make_shared<ast::Num>(yytext);  return NUM; }
-(0|([1-9]+{digit}*))b               { yylval.node = make_shared<ast::NumB>(yytext); return NUM_B; }
-\"([^\n\r\"\\]|\\[rnt"\\])+\"       { yylval.node = make_shared<ast::String>(yytext); return T_STRING; }
+{letter}{digitletter}*              { yylval = make_shared<ast::ID>(yytext);  return T_ID; }
+0|([1-9]+{digit}*)                  { yylval = make_shared<ast::Num>(yytext);  return NUM; }
+(0|([1-9]+{digit}*))b               { yylval = make_shared<ast::NumB>(yytext); return NUM_B; }
+\"([^\n\r\"\\]|\\[rnt"\\])+\"       { yylval = make_shared<ast::String>(yytext); return T_STRING; }
 \/\/[^\n\r]*[\r|\n|\r\n]?           ;
 {whitespace}                        ;
 .                                   { output::errorLex(yylineno); exit(0); }

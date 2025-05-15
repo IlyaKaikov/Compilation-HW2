@@ -31,16 +31,12 @@ static RelOpType relop_from_lexeme(const char* l){
 }
 %}
 
-%union {
-  std::shared_ptr<ast::Node> node;
-}
-
 %token T_VOID T_INT T_BYTE T_BOOL AND OR NOT TRUE FALSE RETURN IF ELSE WHILE BREAK CONTINUE
 %token SC COMMA LPAREN RPAREN LBRACE RBRACE LBRACK RBRACK ASSIGN
 %token RELOP BINOP
-%token <node> T_ID NUM NUM_B T_STRING
+%token T_ID NUM NUM_B T_STRING
 
-%type <node> Program Funcs FuncDecl RetType Formals FormalsList FormalDecl Statements Statement Call Exp ExpList Type
+%type Program Funcs FuncDecl RetType Formals FormalsList FormalDecl Statements Statement Call Exp ExpList Type
 
 %start Program
 
@@ -49,6 +45,7 @@ static RelOpType relop_from_lexeme(const char* l){
 %nonassoc RELOP
 %left BINOP
 %right NOT
+%right CAST
 %left LBRACK
 %nonassoc ELSE
 %nonassoc LOWER_THAN_ELSE
@@ -248,7 +245,7 @@ Exp
                 relop_from_lexeme(yytext)
             );
         }
-    | LPAREN Type RPAREN Exp
+    | LPAREN Type RPAREN Exp %prec CAST
         {
             $$ = std::make_shared<Cast>(
                 std::dynamic_pointer_cast<Exp>($4),
